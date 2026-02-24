@@ -5,8 +5,7 @@
  * @format
  */
 
-import React from 'react';
-import type {PropsWithChildren} from 'react';
+import React, {useState} from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -15,51 +14,64 @@ import {
   Text,
   useColorScheme,
   View,
+  Button,
+  Platform,
+  Image,
 } from 'react-native';
 
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
+import {launchImageLibrary} from 'react-native-image-picker';
+import RNFS from 'react-native-fs';
 
-type SectionProps = PropsWithChildren<{
-  title: string;
-}>;
-
-function Section({children, title}: SectionProps): JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
-}
+import {Colors} from 'react-native/Libraries/NewAppScreen';
+import ImageSegmentationModule from './nativeModules/ImageSegmentationModule';
 
 function App(): JSX.Element {
+  const [imagePath, setImagePath] = useState<string>('');
+  const [outPath, setOutPath] = useState<string>('');
+
   const isDarkMode = useColorScheme() === 'dark';
 
   const backgroundStyle = {
     backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
+  };
+
+  const onPress = async () => {
+    console.log('We will invoke the native module here!');
+    const tempDir = `${RNFS.TemporaryDirectoryPath}${
+      Platform.OS === 'ios' ? '' : '/'
+    }`;
+    const path = `${tempDir}image.jpg`;
+
+    launchImageLibrary({mediaType: 'photo'}, async result => {
+      try {
+        if (await RNFS.exists(path)) {
+          await RNFS.unlink(path);
+        }
+
+        const response = result!.assets![0];
+
+        if (response.uri) {
+          if (Platform.OS === 'ios') {
+            await RNFS.moveFile(response.uri, path);
+          } else {
+            await RNFS.copyFile(response.uri, path);
+          }
+          setImagePath(`file://${path}?ts=${Date.now()}`);
+          console.log(`file://${path}?ts=${Date.now()}`);
+          // setSize({width: response.width, height: response.height});
+
+          const input = `file://${path}`;
+          const output = `file://${tempDir}output.jpg`;
+          await ImageSegmentationModule.segmentImage(input, output);
+          console.log(output);
+          setOutPath(output);
+        } else {
+          // navigation.goBack();
+        }
+      } finally {
+        // setLoading(false);
+      }
+    });
   };
 
   return (
@@ -71,25 +83,23 @@ function App(): JSX.Element {
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         style={backgroundStyle}>
-        <Header />
         <View
           style={{
             backgroundColor: isDarkMode ? Colors.black : Colors.white,
+            ...styles.sectionContainer,
           }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
+          <Text>Hello!</Text>
+          <Button
+            title="Click to invoke your native module!"
+            color="#841584"
+            onPress={onPress}
+          />
+          {imagePath ? (
+            <Image source={{uri: imagePath}} width={100} height={100} />
+          ) : null}
+          {outPath ? (
+            <Image source={{uri: outPath}} width={100} height={100} />
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -100,18 +110,6 @@ const styles = StyleSheet.create({
   sectionContainer: {
     marginTop: 32,
     paddingHorizontal: 24,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-  },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
-  },
-  highlight: {
-    fontWeight: '700',
   },
 });
 
